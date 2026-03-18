@@ -1,0 +1,197 @@
+{
+  "3tentos_teste": {
+    "dbUser": "VRT_3TA",
+    "name": "3Tentos TESTE",
+    "dbName": "VTI"
+  },
+  "chs_teste": {
+    "dbUser": "VRT_CHS",
+    "name": "CHS teste",
+    "dbName": "VTIHOM1"
+  },
+  "dev": {
+    "dbUser": "VRT_NTR",
+    "name": "Desenvolvimento",
+    "dbName": "VTIHOM1"
+  },
+  "3tentos_hom": {
+    "dbUser": "VRT_3TA",
+    "name": "3 Tentos - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "agrofel_hom": {
+    "dbUser": "VRT_AGF",
+    "name": "Agrofel - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "bocchi_hom": {
+    "dbUser": "VRT_BOC",
+    "name": "BOCCHI AGROBIOS - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "brancoperes_hom": {
+    "dbUser": "VRT_BPA",
+    "name": "Branco Peres - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "cotrijal_hom": {
+    "dbUser": "VRT_CTJ",
+    "name": "Cotrijal - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "cvale_hom": {
+    "dbUser": "VRT_CVL",
+    "name": "CVale - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "gnova_hom": {
+    "dbUser": "VRT_GGA",
+    "name": "Gnova Grains Agro - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "jbs_hom": {
+    "dbUser": "VRT_JBS",
+    "name": "JBS - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "potencial_hom": {
+    "dbUser": "VRT_POT",
+    "name": "Potencial - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "rumo_hom": {
+    "dbUser": "VRT_RMN",
+    "name": "Rumo - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "santahelena_hom": {
+    "dbUser": "VRT_USH",
+    "name": "Usina Santa Helena - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "tradicao_hom": {
+    "dbUser": "VRT_TRD",
+    "name": "Tradicao - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "vertti": {
+    "dbUser": "VRT_COM",
+    "name": "Vertti - Demonstracao",
+    "dbName": "VTIHOM1"
+  },
+  "viterra_hom": {
+    "dbUser": "VRT_VIT",
+    "name": "Viterra - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "norte_hom": {
+    "dbUser": "VRT_GNE",
+    "name": "Norte Empreendimento - Homologacao",
+    "dbName": "VTIHOM1"
+  },
+  "3tentos": {
+    "dbUser": "VTI_3TA",
+    "name": "3Tentos",
+    "dbName": "VTI"
+  },
+  "agrofel": {
+    "dbUser": "VTI_AGF",
+    "name": "Agrofel",
+    "dbName": "VTI"
+  },
+  "alvorada_gerencial": {
+    "dbUser": "VTI_CTA",
+    "name": "Painel Cliente Alvorada",
+    "dbName": "VTI"
+  },
+  "alvorada": {
+    "dbUser": "VTI_CTA",
+    "name": "Alvorada",
+    "dbName": "VTI"
+  },
+  "bocchi": {
+    "dbUser": "VTI_BOC",
+    "name": "BOCCHI AGROBIOS",
+    "dbName": "VTI"
+  },
+  "brancoperes": {
+    "dbUser": "VTI_BPA",
+    "name": "Branco Peres Agroindustrial",
+    "dbName": "VTI"
+  },
+  "chs": {
+    "dbUser": "VTI_CHS",
+    "name": "CHS",
+    "dbName": "VTI"
+  },
+  "cvale": {
+    "dbUser": "VTI_CVL",
+    "name": "CVale",
+    "dbName": "VTI"
+  },
+  "gnova": {
+    "dbUser": "VTI_GGA",
+    "name": "Gnova Grains Agro",
+    "dbName": "VTI"
+  },
+  "norte": {
+    "dbUser": "VTI_GNE",
+    "name": "Norte Empreendimento",
+    "dbName": "VTI"
+  },
+  "potencial": {
+    "dbUser": "VTI_POT",
+    "name": "Potencial",
+    "dbName": "VTI"
+  },
+  "rhall": {
+    "dbUser": "VTI_RHL",
+    "name": "RHALL",
+    "dbName": "VTI"
+  },
+  "ricolog": {
+    "dbUser": "VTI_RCL",
+    "name": "Ricolog",
+    "dbName": "VTI"
+  },
+  "rumo": {
+    "dbUser": "VTI_RMN",
+    "name": "Rumo",
+    "dbName": "VTI"
+  },
+  "santahelena": {
+    "dbUser": "VTI_USH",
+    "name": "Usina Santa Helena",
+    "dbName": "VTI"
+  },
+  "savixx": {
+    "dbUser": "VTI_SVX",
+    "name": "Savixx",
+    "dbName": "VTI"
+  },
+  "seara": {
+    "dbUser": "VTI_SRA",
+    "name": "Seara",
+    "dbName": "VTI"
+  },
+  "sucden": {
+    "dbUser": "VTI_SUC",
+    "name": "Sucden",
+    "dbName": "VTI"
+  },
+  "tradicao": {
+    "dbUser": "VTI_TRD",
+    "name": "Tradicao",
+    "dbName": "VTI"
+  },
+  "viterra": {
+    "dbUser": "VTI_VIT",
+    "name": "Viterra",
+    "dbName": "VTI"
+  },
+  "zll": {
+    "dbUser": "VTI_ZLL",
+    "name": "ZLL",
+    "dbName": "VTI"
+  }
+}

@@ -1,0 +1,6 @@
+# Bibliotecas de dados
+pandas==2.0.3
+openpyxl>=3.1.0
+
+# Oracle (thin mode — sem Instant Client)
+oracledb>=1.4.0
