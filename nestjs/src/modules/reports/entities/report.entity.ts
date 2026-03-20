@@ -60,4 +60,10 @@ export class ReportEntity {
 
   @Column({ nullable: true })
   delivered_at: Date;
+
+  @Column({ nullable: true })
+  object_key_pdf: string;
+
+  @Column({ nullable: true })
+  object_key_csv: string;
 }

@@ -4,3 +4,6 @@ openpyxl>=3.1.0
 
 # Oracle (thin mode — sem Instant Client)
 oracledb>=1.4.0
+
+# Geração de PDF
+reportlab>=4.0.0

@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import axios from 'axios';
 import { ReportEntity, ReportStatus } from './entities/report.entity';
 import { CreateAsyncReportDto } from './dtos/create-async-report.dto';
+import { StorageService } from '../storage/storage.service';
 
 @Injectable()
 export class ReportsService {
@@ -15,6 +16,7 @@ export class ReportsService {
     @InjectRepository(ReportEntity)
     private readonly reportRepository: Repository<ReportEntity>,
     private readonly configService: ConfigService,
+    private readonly storageService: StorageService,
   ) { }
 
   async createAsyncReport(createReportDto: CreateAsyncReportDto): Promise<ReportEntity> {
@@ -101,7 +103,9 @@ export class ReportsService {
   }
 
   async getReportById(reportId: string): Promise<ReportEntity | null> {
-    return this.reportRepository.findOne({ where: { id: reportId } });
+    return this.reportRepository.findOne({
+      where: [{ id: reportId }, { request_id: reportId }],
+    });
   }
 
   async getPendingReports(limit: number = 10): Promise<ReportEntity[]> {
@@ -169,5 +173,46 @@ export class ReportsService {
       delivered_at: new Date(),
     });
     return this.getReportById(reportId) as unknown as ReportEntity;
+  }
+
+  async storeFile(
+    reportId: string,
+    format: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const report = await this.getReportById(reportId);
+    if (!report) {
+      throw new NotFoundException('Relatório não encontrado');
+    }
+
+    const cliente = (report.payload as any)?.cliente || report.cliente_cnpj || 'unknown';
+    const objectKey = `relatorios-assync/${cliente}/${reportId}/relatorio.${format}`;
+
+    await this.storageService.uploadBuffer(objectKey, buffer, contentType);
+
+    const updateData: any = {};
+    if (format === 'pdf') {
+      updateData.object_key_pdf = objectKey;
+    } else {
+      updateData.object_key_csv = objectKey;
+    }
+
+    await this.reportRepository.update(reportId, updateData);
+    this.logger.log(`Arquivo ${format} armazenado no OCI: ${objectKey}`);
+  }
+
+  async getDownloadUrl(reportId: string, format: string): Promise<string> {
+    const report = await this.getReportById(reportId);
+    if (!report) {
+      throw new NotFoundException('Relatório não encontrado');
+    }
+
+    const objectKey = format === 'pdf' ? report.object_key_pdf : report.object_key_csv;
+    if (!objectKey) {
+      throw new NotFoundException(`Arquivo ${format} ainda não disponível para este relatório`);
+    }
+
+    return this.storageService.generatePresignedDownloadUrl(objectKey);
   }
 }

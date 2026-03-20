@@ -1,5 +1,7 @@
 import os
 import sys
+import io
+import csv
 import json
 import logging
 import smtplib
@@ -71,36 +73,145 @@ def extract_report_data(**context):
 
     return summary
 
+def _generate_csv(oracle_result):
+    """Gera bytes CSV a partir dos dados do Oracle."""
+    rows = oracle_result.get('GROUPED', [])
+    output = io.StringIO()
+    if rows:
+        fieldnames = []
+        seen_fields = set()
+        for row in rows:
+            for key in row.keys():
+                if key not in seen_fields:
+                    seen_fields.add(key)
+                    fieldnames.append(key)
+
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(rows)
+    else:
+        output.write('sem_dados\n')
+    return output.getvalue().encode('utf-8')
+
+def _generate_pdf(oracle_result, report_id):
+    """Gera bytes PDF com tabela de dados usando reportlab."""
+    # Compatibilidade com ambientes onde hashlib.md5 nao aceita usedforsecurity.
+    import hashlib
+    original_md5 = hashlib.md5
+
+    def compat_md5(*args, **kwargs):
+        kwargs.pop('usedforsecurity', None)
+        return original_md5(*args, **kwargs)
+
+    hashlib.md5 = compat_md5
+
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=1*cm, rightMargin=1*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(Paragraph(f'Relatório #{report_id}', styles['Title']))
+    elements.append(Paragraph(f'Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M")}', styles['Normal']))
+    elements.append(Spacer(1, 0.5*cm))
+
+    summary = [
+        ['Volume Expedido', 'Volume Recebido', 'Nº Expedições', 'Nº Recebimentos', 'Retenção', 'Desconto', 'Saldo'],
+        [
+            str(oracle_result.get('VOL_EXP', 0)),
+            str(oracle_result.get('VOL_RCP', 0)),
+            str(oracle_result.get('NR_EXP', 0)),
+            str(oracle_result.get('NR_RCP', 0)),
+            str(oracle_result.get('RETENCAO', 0)),
+            str(oracle_result.get('DESCONTO', 0)),
+            str(oracle_result.get('SALDO', 0)),
+        ],
+    ]
+    summary_table = Table(summary, repeatRows=1)
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f4f8')]),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.5*cm))
+
+    rows = oracle_result.get('GROUPED', [])
+    if rows:
+        headers = list(rows[0].keys())
+        table_data = [headers] + [[str(row.get(h, '')) for h in headers] for row in rows]
+        detail_table = Table(table_data, repeatRows=1)
+        detail_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f4f8')]),
+        ]))
+        elements.append(detail_table)
+    else:
+        elements.append(Paragraph('Nenhum registro encontrado para o período selecionado.', styles['Normal']))
+
+    try:
+        doc.build(elements)
+        return buffer.getvalue()
+    finally:
+        hashlib.md5 = original_md5
+
+def _upload_file_to_nestjs(nestjs_url, report_id, file_bytes, fmt, content_type):
+    """Faz upload do arquivo para o NestJS que armazena no OCI bucket."""
+    response = requests.post(
+        f'{nestjs_url}/api/reports/{report_id}/store',
+        params={'format': fmt},
+        files={'file': (f'relatorio.{fmt}', file_bytes, content_type)},
+        timeout=60,
+    )
+    response.raise_for_status()
+    logger.info("Upload %s realizado com sucesso: %s", fmt.upper(), response.json())
+
 def transform_report_data(**context):
     """
-    Transforma dados extraídos do Oracle em PDF/XML.
+    Gera CSV e PDF a partir dos dados do Oracle e faz upload para o OCI via NestJS.
     """
     task_instance = context['task_instance']
     oracle_result = task_instance.xcom_pull(task_ids='extract_data', key='oracle_result')
     dag_run_conf = context['dag_run'].conf
     report_id = dag_run_conf.get('report_id')
+    nestjs_url = os.getenv('NESTJS_API_URL', 'http://nestjs-api:3000')
 
-    print(f"Transforming data for report: {report_id}")
+    logger.info("Gerando arquivos para o relatório: %s", report_id)
 
-    try:
-        # Aqui entra a lógica de transformação
-        # Por enquanto, apenas simulamos o resultado
-        transformed_data = {
-            'report_id': report_id,
-            'status': 'TRANSFORMED',
-            'pdf_url': f'/reports/{report_id}/relatorio.pdf',
-            'xml_url': f'/reports/{report_id}/relatorio.xml',
-            'created_at': datetime.now().isoformat(),
-        }
+    csv_bytes = _generate_csv(oracle_result)
+    logger.info("CSV gerado: %d bytes", len(csv_bytes))
 
-        task_instance.xcom_push(key='transformed_data', value=transformed_data)
-        print(f"Data transformed successfully")
-        return transformed_data
+    pdf_bytes = _generate_pdf(oracle_result, report_id)
+    logger.info("PDF gerado: %d bytes", len(pdf_bytes))
 
-    except Exception as e:
-        print(f"Error transforming data: {str(e)}")
-        raise
+    _upload_file_to_nestjs(nestjs_url, report_id, csv_bytes, 'csv', 'text/csv')
+    _upload_file_to_nestjs(nestjs_url, report_id, pdf_bytes, 'pdf', 'application/pdf')
 
+    transformed_data = {
+        'report_id': report_id,
+        'status': 'TRANSFORMED',
+        'pdf_download_path': f'/api/reports/{report_id}/download/pdf',
+        'csv_download_path': f'/api/reports/{report_id}/download/csv',
+        'created_at': datetime.now().isoformat(),
+    }
+
+    task_instance.xcom_push(key='transformed_data', value=transformed_data)
+    logger.info("Transformação concluída: %s", transformed_data)
+    return transformed_data
 def send_report_to_email(**context):
     """
     Envia relatório por email
@@ -130,19 +241,23 @@ def send_report_to_email(**context):
         message['From'] = smtp_from
         message['To'] = usuario_email
 
-        body = f"""
-Olá,
+        public_url = os.getenv('REPORTS_PUBLIC_URL', 'http://localhost:3000')
+        pdf_url = f"{public_url}{transformed_data.get('pdf_download_path', '')}"
+        csv_url = f"{public_url}{transformed_data.get('csv_download_path', '')}"
 
-Seu relatório assíncrono foi processado.
+        body = f"""Olá,
 
-Request ID: {report_id}
-PDF: {transformed_data.get('pdf_url')}
-XML: {transformed_data.get('xml_url')}
+    Seu relatório assíncrono foi processado com sucesso.
 
-Atenciosamente,
-Velog
-""".strip()
+    Request ID: {report_id}
 
+    Download PDF:  {pdf_url}
+    Download CSV:  {csv_url}
+
+    Os links expiram em 1 hora. Após isso, acesse novamente para gerar um novo link.
+
+    Atenciosamente,
+    Velog""".strip()
         message.attach(MIMEText(body, 'plain', 'utf-8'))
 
         with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
