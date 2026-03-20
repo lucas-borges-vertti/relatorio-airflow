@@ -1,7 +1,6 @@
 import os
 import sys
 import io
-import csv
 import json
 import logging
 import smtplib
@@ -73,28 +72,31 @@ def extract_report_data(**context):
 
     return summary
 
-def _generate_csv(oracle_result):
-    """Gera bytes CSV a partir dos dados do Oracle."""
+def _generate_csv(oracle_result, cliente='default'):
+    """Gera bytes CSV conforme template por cliente."""
+    from client_templates import get_template
+    from report_formatter import format_rows_for_output, resolve_label
+
+    template = get_template(cliente)
+    headers = template['headers']['csv']
+    concat_documentos = template['concatDocumentos']
     rows = oracle_result.get('GROUPED', [])
+
+    col_labels = [resolve_label(h['label']) for h in headers]
+    keys = [h['key'] for h in headers]
+
     output = io.StringIO()
+    output.write(';'.join(col_labels) + '\n')
+
     if rows:
-        fieldnames = []
-        seen_fields = set()
-        for row in rows:
-            for key in row.keys():
-                if key not in seen_fields:
-                    seen_fields.add(key)
-                    fieldnames.append(key)
+        formatted_rows = format_rows_for_output(rows, headers, concat_documentos)
+        for row in formatted_rows:
+            output.write(';'.join(str(row.get(k, '')) for k in keys) + '\n')
 
-        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
-        writer.writeheader()
-        writer.writerows(rows)
-    else:
-        output.write('sem_dados\n')
-    return output.getvalue().encode('utf-8')
+    return output.getvalue().encode('utf-8-sig')
 
-def _generate_pdf(oracle_result, report_id):
-    """Gera bytes PDF com tabela de dados usando reportlab."""
+def _generate_pdf(oracle_result, report_id, cliente='default'):
+    """Gera bytes PDF conforme template por cliente."""
     # Compatibilidade com ambientes onde hashlib.md5 nao aceita usedforsecurity.
     import hashlib
     original_md5 = hashlib.md5
@@ -105,19 +107,34 @@ def _generate_pdf(oracle_result, report_id):
 
     hashlib.md5 = compat_md5
 
-    from reportlab.lib.pagesizes import A4, landscape
+    from client_templates import get_template
+    from report_formatter import format_rows_for_output, resolve_label
+    from reportlab.lib.pagesizes import A2, A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import cm
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
 
+    template = get_template(cliente)
+    headers = template['headers']['pdf']
+    concat_documentos = template['concatDocumentos']
+    rows = oracle_result.get('GROUPED', [])
+
+    col_labels = [resolve_label(h['label']) for h in headers]
+    col_keys = [h['key'] for h in headers]
+    col_aligns = [h.get('align', 'left') for h in headers]
+    formatted_rows = format_rows_for_output(rows, headers, concat_documentos) if rows else []
+
+    page_format = A2 if len(headers) > 15 else A4
+
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=1*cm, rightMargin=1*cm,
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(page_format), leftMargin=1*cm, rightMargin=1*cm,
                             topMargin=1.5*cm, bottomMargin=1.5*cm)
     styles = getSampleStyleSheet()
     elements = []
 
     elements.append(Paragraph(f'Relatório #{report_id}', styles['Title']))
+    elements.append(Paragraph(f'Cliente: {cliente}', styles['Normal']))
     elements.append(Paragraph(f'Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M")}', styles['Normal']))
     elements.append(Spacer(1, 0.5*cm))
 
@@ -146,19 +163,22 @@ def _generate_pdf(oracle_result, report_id):
     elements.append(summary_table)
     elements.append(Spacer(1, 0.5*cm))
 
-    rows = oracle_result.get('GROUPED', [])
-    if rows:
-        headers = list(rows[0].keys())
-        table_data = [headers] + [[str(row.get(h, '')) for h in headers] for row in rows]
+    if formatted_rows:
+        table_data = [col_labels] + [[str(row.get(h, '')) for h in col_keys] for row in formatted_rows]
         detail_table = Table(table_data, repeatRows=1)
-        detail_table.setStyle(TableStyle([
+
+        style_rules = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 7),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f4f8')]),
-        ]))
+        ]
+        for idx, align in enumerate(col_aligns):
+            style_rules.append(('ALIGN', (idx, 0), (idx, -1), 'RIGHT' if align == 'right' else 'LEFT'))
+
+        detail_table.setStyle(TableStyle(style_rules))
         elements.append(detail_table)
     else:
         elements.append(Paragraph('Nenhum registro encontrado para o período selecionado.', styles['Normal']))
@@ -188,14 +208,15 @@ def transform_report_data(**context):
     oracle_result = task_instance.xcom_pull(task_ids='extract_data', key='oracle_result')
     dag_run_conf = context['dag_run'].conf
     report_id = dag_run_conf.get('report_id')
+    cliente = dag_run_conf.get('cliente') or (dag_run_conf.get('payload') or {}).get('cliente') or 'default'
     nestjs_url = os.getenv('NESTJS_API_URL', 'http://nestjs-api:3000')
 
-    logger.info("Gerando arquivos para o relatório: %s", report_id)
+    logger.info("Gerando arquivos para o relatório: %s (cliente=%s)", report_id, cliente)
 
-    csv_bytes = _generate_csv(oracle_result)
+    csv_bytes = _generate_csv(oracle_result, cliente)
     logger.info("CSV gerado: %d bytes", len(csv_bytes))
 
-    pdf_bytes = _generate_pdf(oracle_result, report_id)
+    pdf_bytes = _generate_pdf(oracle_result, report_id, cliente)
     logger.info("PDF gerado: %d bytes", len(pdf_bytes))
 
     _upload_file_to_nestjs(nestjs_url, report_id, csv_bytes, 'csv', 'text/csv')
