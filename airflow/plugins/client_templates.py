@@ -154,6 +154,18 @@ _RHALL_CSV_HEADERS = _RHALL_PDF_HEADERS + [
     {"label": "data_emissao", "key": "DT_DCO"},
 ]
 
+_RHALL_PDF_STYLE = {
+    "title": "Relatorio Portal Cliente - RHALL",
+    "logo_path": "/opt/airflow/logos/rhall.png",
+    "header_color": "#0f3557",
+    "row_alt_color": "#eef3f8",
+    "grid_color": "#c7d0db",
+    "title_font_size": 16,
+    "meta_font_size": 9,
+    "summary_font_size": 8,
+    "detail_font_size": 7,
+}
+
 TEMPLATES = {
     "default": {
         "headers": {"pdf": _DEFAULT_PDF_HEADERS, "csv": _DEFAULT_CSV_HEADERS},
@@ -178,6 +190,7 @@ TEMPLATES = {
     "rhall": {
         "headers": {"pdf": _RHALL_PDF_HEADERS, "csv": _RHALL_CSV_HEADERS},
         "concatDocumentos": True,
+        "pdf_style": _RHALL_PDF_STYLE,
     },
 }
 

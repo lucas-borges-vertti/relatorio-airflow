@@ -112,13 +112,26 @@ def _generate_pdf(oracle_result, report_id, cliente='default'):
     from reportlab.lib.pagesizes import A2, A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
     from reportlab.lib.styles import getSampleStyleSheet
 
     template = get_template(cliente)
     headers = template['headers']['pdf']
     concat_documentos = template['concatDocumentos']
+    pdf_style = template.get('pdf_style', {})
     rows = oracle_result.get('GROUPED', [])
+
+    header_color = colors.HexColor(pdf_style.get('header_color', '#003366'))
+    row_alt_color = colors.HexColor(pdf_style.get('row_alt_color', '#f0f4f8'))
+    grid_color = colors.HexColor(pdf_style.get('grid_color', '#808080'))
+
+    title_text = pdf_style.get('title') or f'Relatório #{report_id}'
+    logo_path = pdf_style.get('logo_path') if cliente == 'rhall' else None
+
+    title_font_size = int(pdf_style.get('title_font_size', 15))
+    meta_font_size = int(pdf_style.get('meta_font_size', 10))
+    summary_font_size = int(pdf_style.get('summary_font_size', 8))
+    detail_font_size = int(pdf_style.get('detail_font_size', 7))
 
     col_labels = [resolve_label(h['label']) for h in headers]
     col_keys = [h['key'] for h in headers]
@@ -131,9 +144,15 @@ def _generate_pdf(oracle_result, report_id, cliente='default'):
     doc = SimpleDocTemplate(buffer, pagesize=landscape(page_format), leftMargin=1*cm, rightMargin=1*cm,
                             topMargin=1.5*cm, bottomMargin=1.5*cm)
     styles = getSampleStyleSheet()
+    styles['Title'].fontSize = title_font_size
+    styles['Normal'].fontSize = meta_font_size
     elements = []
 
-    elements.append(Paragraph(f'Relatório #{report_id}', styles['Title']))
+    if logo_path and os.path.exists(logo_path):
+        elements.append(Image(logo_path, width=4.2 * cm, height=1.2 * cm))
+        elements.append(Spacer(1, 0.25 * cm))
+
+    elements.append(Paragraph(title_text, styles['Title']))
     elements.append(Paragraph(f'Cliente: {cliente}', styles['Normal']))
     elements.append(Paragraph(f'Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M")}', styles['Normal']))
     elements.append(Spacer(1, 0.5*cm))
@@ -152,13 +171,13 @@ def _generate_pdf(oracle_result, report_id, cliente='default'):
     ]
     summary_table = Table(summary, repeatRows=1)
     summary_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
+        ('BACKGROUND', (0, 0), (-1, 0), header_color),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTSIZE', (0, 0), (-1, -1), summary_font_size),
+        ('GRID', (0, 0), (-1, -1), 0.5, grid_color),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f4f8')]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, row_alt_color]),
     ]))
     elements.append(summary_table)
     elements.append(Spacer(1, 0.5*cm))
@@ -168,12 +187,12 @@ def _generate_pdf(oracle_result, report_id, cliente='default'):
         detail_table = Table(table_data, repeatRows=1)
 
         style_rules = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
+            ('BACKGROUND', (0, 0), (-1, 0), header_color),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f4f8')]),
+            ('FONTSIZE', (0, 0), (-1, -1), detail_font_size),
+            ('GRID', (0, 0), (-1, -1), 0.5, grid_color),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, row_alt_color]),
         ]
         for idx, align in enumerate(col_aligns):
             style_rules.append(('ALIGN', (idx, 0), (idx, -1), 'RIGHT' if align == 'right' else 'LEFT'))

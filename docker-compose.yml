@@ -87,6 +87,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - ./airflow/config:/opt/airflow/config
+      - ./airflow/logos:/opt/airflow/logos
       - airflow_logs:/opt/airflow/logs
     depends_on:
       - airflow-postgres
