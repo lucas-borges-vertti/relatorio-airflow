@@ -3,14 +3,11 @@ import sys
 import io
 import json
 import logging
-import smtplib
 import requests
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 from datetime import datetime, timedelta
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 # Garante que o diretório de plugins está no path do Python
 sys.path.insert(0, os.path.join(os.environ.get('AIRFLOW_HOME', '/opt/airflow'), 'plugins'))
@@ -254,7 +251,7 @@ def transform_report_data(**context):
     return transformed_data
 def send_report_to_email(**context):
     """
-    Envia relatório por email
+    Envia relatório por email via API Vertti Messages.
     """
     task_instance = context['task_instance']
     transformed_data = task_instance.xcom_pull(task_ids='transform_data', key='transformed_data')
@@ -262,57 +259,72 @@ def send_report_to_email(**context):
     usuario_email = dag_run_conf.get('usuario_email')
     report_id = dag_run_conf.get('report_id')
 
-    smtp_host = os.getenv('SMTP_HOST', '')
-    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    whatsapp_api_url = os.getenv('WHATSAPP_API_URL', 'https://api-whatsapp.vertti.net.br')
+    whatsapp_api_key = os.getenv('WHATSAPP_API_KEY', '')
     smtp_user = os.getenv('SMTP_USER', '')
     smtp_password = os.getenv('SMTP_PASSWORD', '')
     smtp_from = os.getenv('SMTP_FROM', smtp_user)
 
     logger.info("Enviando relatório por email para: %s", usuario_email)
 
+    if not usuario_email:
+        raise ValueError('usuario_email não informado no dag_run.conf')
+    if not smtp_user or not smtp_password:
+        raise ValueError('Configuração de email incompleta: definir SMTP_USER e SMTP_PASSWORD')
+
+    public_url = os.getenv('REPORTS_PUBLIC_URL', 'http://localhost:4500')
+    pdf_url = f"{public_url}{transformed_data.get('pdf_download_path', '')}"
+    csv_url = f"{public_url}{transformed_data.get('csv_download_path', '')}"
+
+    text_body = f"""Olá,
+
+Seu relatório assíncrono foi processado com sucesso.
+
+Request ID: {report_id}
+
+Download PDF:  {pdf_url}
+Download CSV:  {csv_url}
+
+Os links expiram em 1 hora. Após isso, acesse novamente para gerar um novo link.
+
+Atenciosamente,
+Velog"""
+
+    html_body = f"""<p>Olá,</p>
+<p>Seu relatório assíncrono foi processado com sucesso.</p>
+<p><strong>Request ID:</strong> {report_id}</p>
+<p>
+  <a href="{pdf_url}">📄 Download PDF</a><br/>
+  <a href="{csv_url}">📊 Download CSV</a>
+</p>
+<p><em>Os links expiram em 1 hora.</em></p>
+<p>Atenciosamente,<br/>Velog</p>"""
+
     try:
-        if not usuario_email:
-            raise ValueError('usuario_email não informado no dag_run.conf')
-        if not smtp_host or not smtp_user or not smtp_password:
-            raise ValueError('Configuração SMTP incompleta: definir SMTP_HOST, SMTP_USER e SMTP_PASSWORD')
-
-        message = MIMEMultipart('alternative')
-        message['Subject'] = f'Relatório assíncrono #{report_id} processado'
-        message['From'] = smtp_from
-        message['To'] = usuario_email
-
-        public_url = os.getenv('REPORTS_PUBLIC_URL', 'http://localhost:3000')
-        pdf_url = f"{public_url}{transformed_data.get('pdf_download_path', '')}"
-        csv_url = f"{public_url}{transformed_data.get('csv_download_path', '')}"
-
-        body = f"""Olá,
-
-    Seu relatório assíncrono foi processado com sucesso.
-
-    Request ID: {report_id}
-
-    Download PDF:  {pdf_url}
-    Download CSV:  {csv_url}
-
-    Os links expiram em 1 hora. Após isso, acesse novamente para gerar um novo link.
-
-    Atenciosamente,
-    Velog""".strip()
-        message.attach(MIMEText(body, 'plain', 'utf-8'))
-
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(smtp_from, [usuario_email], message.as_string())
-
-        logger.info("Email enviado com sucesso para %s", usuario_email)
+        response = requests.post(
+            f'{whatsapp_api_url}/email/send',
+            headers={
+                'Authorization': whatsapp_api_key,
+                'Content-Type': 'application/json',
+            },
+            json={
+                'fromUser': smtp_from,
+                'fromPassword': smtp_password,
+                'to': usuario_email,
+                'subject': f'Relatório assíncrono #{report_id} processado',
+                'text': text_body,
+                'html': html_body,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info("Email enfileirado com sucesso para %s (jobId=%s)",
+                    usuario_email, response.json().get('data', {}).get('jobId'))
         task_instance.xcom_push(key='delivery_status', value='DELIVERED')
         return True
 
     except Exception as e:
-        logger.error("Erro ao enviar email: %s", str(e))
+        logger.error("Erro ao enviar email via API: %s", str(e))
         raise
 
 def callback_nestjs_success(**context):

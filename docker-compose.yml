@@ -1,59 +1,4 @@
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: relatorio_postgres
-    environment:
-      POSTGRES_USER: relatorio_user
-      POSTGRES_PASSWORD: relatorio_pass
-      POSTGRES_DB: relatorio_db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U relatorio_user"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - relatorio_network
-
-  # NestJS API
-  nestjs-api:
-    build:
-      context: ./nestjs
-      dockerfile: Dockerfile
-    container_name: relatorio_nestjs
-    environment:
-      NODE_ENV: development
-      PORT: 3000
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USERNAME: relatorio_user
-      DB_PASSWORD: relatorio_pass
-      DB_DATABASE: relatorio_db
-      AIRFLOW_BASE_URL: http://airflow-webserver:8080
-      AIRFLOW_DAG_ID: report_generation_dag
-      AIRFLOW_API_USER: airflow
-      AIRFLOW_API_PASSWORD: airflow
-      OCI_NAMESPACE: ${OCI_NAMESPACE}
-      OCI_BUCKET_NAME: ${OCI_BUCKET_NAME:-vertti-ged}
-      OCI_REGION: ${OCI_REGION:-sa-saopaulo-1}
-      OCI_USER: ${OCI_USER}
-      OCI_FINGERPRINT: ${OCI_FINGERPRINT}
-      OCI_TENANCY: ${OCI_TENANCY}
-      OCI_PRIVATE_KEY_PATH: ${OCI_PRIVATE_KEY_CONTAINER_PATH:-/root/.oci/oci_api_key.pem}
-      OCI_DOWNLOAD_TTL_SECONDS: ${OCI_DOWNLOAD_TTL_SECONDS:-3600}
-    ports:
-      - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./nestjs/src:/app/src
-      - ${OCI_PRIVATE_KEY_PATH:-./oci_api_key.pem}:${OCI_PRIVATE_KEY_CONTAINER_PATH:-/root/.oci/oci_api_key.pem}:ro
-    networks:
-      - relatorio_network
-
   # Airflow Webserver
   airflow-webserver:
     build:
@@ -67,7 +12,7 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
-      NESTJS_API_URL: http://nestjs-api:3000
+      NESTJS_API_URL: http://host-gateway:4500
       # Credenciais Oracle — forneça os valores reais no arquivo .env
       ORACLE_HOST: ${ORACLE_HOST:-10.100.20.169}
       ORACLE_PORT: ${ORACLE_PORT:-1521}
@@ -75,12 +20,14 @@ services:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-CNSDTOTC}
       ORACLE_SERVICE_NAME: ${ORACLE_SERVICE_NAME:-vtihom1}
       AIRFLOW_CLIENT_SCHEMA_MAP_PATH: /opt/airflow/config/client_schema_map.json
-      SMTP_HOST: ${SMTP_HOST:-smtp.velog.com.br}
-      SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-no-reply@velog.com.br}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-no-reply@velog.com.br}
-      REPORTS_PUBLIC_URL: ${REPORTS_PUBLIC_URL:-http://localhost:3000}
+      WHATSAPP_API_URL: ${WHATSAPP_API_URL:-https://api-whatsapp.vertti.net.br}
+      WHATSAPP_API_KEY: ${WHATSAPP_API_KEY:-voaKhLNZWGRLDMGVN1KFfCfLFULmdgvO}
+      REPORTS_PUBLIC_URL: ${REPORTS_PUBLIC_URL:-http://localhost:4500}
+    extra_hosts:
+      - "host-gateway:host-gateway"
     ports:
       - "8081:8080"
     volumes:
@@ -108,7 +55,6 @@ services:
       - relatorio_network
 
 volumes:
-  postgres_data:
   airflow_logs:
   airflow_postgres_data:
 
