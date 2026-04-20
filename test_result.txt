@@ -1,0 +1,14 @@
+======================================================================
+  TESTE E2E — FLUXO DE RELATORIO ASSÍNCRONO — 2026-04-10 00:30:58
+  ID_USR: 272  |  schema: VTI_RHL  |  schemaKey: rhall
+  JWT expira: 2026-04-11 00:22:32
+======================================================================
+
+----------------------------------------------------------------------
+  [1] POST /report-scheduling → NestJS (localhost:4500)
+----------------------------------------------------------------------
+  Payload: {"tpOrigem":"PORTAL_CLIENTE","dtInicio":"2026-03-12","dtFim":"2026-04-10","dsFiltro":{"id_pro":"1","operacao":"T","aprovacoes":"TODOS","cnpjparceiro":["25142875000230"],"email":"lucas.borges@vertti.com.br"}}
+
+  HTTP Status: 500
+  Body: {"message":"ORA-00942: table or view does not exist\nHelp: https://docs.oracle.com/error-help/db/ora-00942/","statusCode":500,"timestamp":"2026-04-10T03:30:59.138Z","path":"/report-scheduling","errorType":"Internal","version":"unknown"}
+

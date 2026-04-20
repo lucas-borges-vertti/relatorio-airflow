@@ -12,20 +12,21 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
-      NESTJS_API_URL: http://host-gateway:4500
-      # Credenciais Oracle — forneça os valores reais no arquivo .env
-      ORACLE_HOST: ${ORACLE_HOST:-10.100.20.169}
-      ORACLE_PORT: ${ORACLE_PORT:-1521}
-      ORACLE_USER: ${ORACLE_USER:-VRT_NTR}
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-CNSDTOTC}
-      ORACLE_SERVICE_NAME: ${ORACLE_SERVICE_NAME:-vtihom1}
+      APP_ENV: ${APP_ENV}
+      NESTJS_API_URL: ${NESTJS_API_URL}
+      ORACLE_HOST: ${ORACLE_HOST}
+      ORACLE_PORT: ${ORACLE_PORT}
+      ORACLE_USER: ${ORACLE_USER}
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
+      ORACLE_SERVICE_NAME: ${ORACLE_SERVICE_NAME}
+      ORACLE_DSN: ${ORACLE_DSN:-}
       AIRFLOW_CLIENT_SCHEMA_MAP_PATH: /opt/airflow/config/client_schema_map.json
-      SMTP_USER: ${SMTP_USER:-no-reply@velog.com.br}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-no-reply@velog.com.br}
-      WHATSAPP_API_URL: ${WHATSAPP_API_URL:-https://api-whatsapp.vertti.net.br}
-      WHATSAPP_API_KEY: ${WHATSAPP_API_KEY:-voaKhLNZWGRLDMGVN1KFfCfLFULmdgvO}
-      REPORTS_PUBLIC_URL: ${REPORTS_PUBLIC_URL:-http://localhost:4500}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      WHATSAPP_API_URL: ${WHATSAPP_API_URL}
+      WHATSAPP_API_KEY: ${WHATSAPP_API_KEY}
+      REPORTS_PUBLIC_URL: ${REPORTS_PUBLIC_URL}
     extra_hosts:
       - "host-gateway:host-gateway"
     ports:

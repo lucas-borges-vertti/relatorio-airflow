@@ -1,226 +1,182 @@
-# Relatorio Async - NestJS + Airflow
+# Relatorio Async - Airflow Runtime
 
 ## Visão Geral
 
-Sistema de geração de relatórios assíncronos que integra:
+Este repositório hoje mantém o runtime de processamento assíncrono do relatório, centrado em Airflow.
 
-- **NestJS API**: Gerencia requisições, armazena status em BD PostgreSQL, dispara DAGs Airflow
-- **Airflow**: Orquestra workflow completo (extração → transformação → entrega)
-- **PostgreSQL**: Persistência de dados das requisições (relatórios)
-- **Oracle Database**: Fonte dos dados consultada diretamente pelo Airflow em Python
+O stack local versionado aqui contém:
 
-## Arquitetura
+- Airflow webserver com DAGs, plugins e configuração do extrator Oracle
+- PostgreSQL interno do Airflow para metadados da plataforma
+- Templates de ambiente para homologação e produção
 
-```
-Web Frontend (React)
+O backend HTTP de negócio não é mais mantido neste repositório. A migração está documentada em [RELATORIO_MIGRATION_PLAN.md](RELATORIO_MIGRATION_PLAN.md).
+
+## O Que Este Repositório Faz
+
+- Executa a DAG `report_generation_dag`
+- Consulta Oracle diretamente em Python
+- Resolve o schema por cliente usando `airflow/config/client_schema_map.json`
+- Gera CSV e PDF
+- Envia email
+- Faz upload e callback para uma API externa configurada por `NESTJS_API_URL`
+
+## Arquitetura Atual
+
+```text
+API externa / frontend
+    ↓ trigger da DAG com payload
+Airflow
+├── extract_data      -> Oracle direto via Python
+├── transform_data    -> gera CSV e PDF
+├── send_email        -> entrega por email
+├── callback_success  -> PATCH status no backend externo
+└── callback_failure  -> PATCH erro no backend externo
     ↓
-POST /api/reports/async
+airflow-postgres
     ↓
-NestJS API
-├── Validar payload
-├── Salvar em BD (status=PENDING)
-├── Dispara Airflow DAG via API
-└── Retorna requestId
-    ↓
-Airflow DAG (report_generation_dag)
-├── Task 1: extract_data → Consulta Oracle direto via Python (schema dinâmico por cliente)
-├── Task 2: transform_data → Gera PDF/XML
-├── Task 3: send_email → Entrega ao cliente
-└── Callback: Atualiza status em NestJS via PATCH /api/reports/{id}/status
-    ↓
-Web pode fazer polling em GET /api/reports/{id}/status
+metadados internos do Airflow
 ```
 
-## Responsabilidades
+## Estrutura Relevante
 
-### NestJS
-- ✅ Receber requisições assíncronas (POST /api/reports/async)
-- ✅ Validar payloads (action, periodos, etc.)
-- ✅ Persistir em BD PostgreSQL (velog_reports_async)
-- ✅ Disparar DAG Airflow via API HTTP
-- ✅ Retornar requestId imediatamente
-- ✅ Fornecer status em tempo real (GET /api/reports/{id}/status)
-- ✅ Receber callbacks do Airflow e atualizar BD
+- `airflow/dags/report_generation.py`: DAG principal
+- `airflow/plugins/oracle_connector.py`: conexão Oracle e resolução de parâmetros
+- `airflow/plugins/portal_cliente_extractor.py`: queries e agregação
+- `airflow/config/client_schema_map.json`: mapa `cliente -> schema Oracle`
+- `docker-compose.yml`: stack local do Airflow
+- `SETUP.md`: guia operacional do ambiente
 
-### Airflow
-- ✅ Orquestrar workflow de geração (extract → transform → deliver)
-- ✅ Extrair dados direto do Oracle via Python (sem chamada ao PHP)
-- ✅ Resolver schema Oracle por `cliente` (ex.: `potencial_hom` -> `VRT_POT`)
-- ✅ Transformar dados em PDF/XML per template
-- ✅ Entregar via Email (futuro: WhatsApp)
-- ✅ Executar retries automáticos (2 retries com 5min delay)
-- ✅ Notificar NestJS quando concluído (callback)
-- ✅ Logs persistentes por execução
+## Ambientes
 
-### PostgreSQL
-- ✅ Tabela `velog_reports_async`: Requisições + status + timestamps
-- ✅ Rastreabilidade completa (created_at, updated_at, completed_at, delivered_at)
-- ✅ Dados de entrada (payload) + resultado (PDF/XML URLs)
+O projeto usa um `docker-compose.yml` único e arquivos de ambiente separados.
 
-## Instalação & Execução
+Templates versionados:
 
-### Pré-requisitos
-- Docker & Docker Compose
-- Node.js 22+ (para desenvolvimento local)
+- `.env.example`
+- `.env.hml.example`
+- `.env.prod.example`
 
-### Setup
+Arquivos reais esperados no servidor:
 
-```bash
-cd /home/lucas/projetos/relatorio
+- `.env.hml`
+- `.env.prod`
 
-# 1. Criar arquivo .env
-cp nestjs/.env.example nestjs/.env
+Principais variáveis:
 
-# 2. Build e start dos containers
-docker-compose up -d
-
-# 3. NestJS vai criar tabelas automaticamente (TypeORM synchronize=true)
-
-# 4. Airflow precisa de setup inicial
-docker-compose exec -it airflow-webserver airflow db init
-docker-compose exec -it airflow-webserver airflow users create \
-  --username airflow \
-  --password airflow \
-  --firstname Airflow \
-  --lastname Admin \
-  --role Admin \
-  --email admin@vertti.com
-
-# 5. Verificar status
-docker-compose ps
-```
-
-## Endpoints NestJS
-
-### 1. Submeter Relatório Assíncrono
-```bash
-POST http://localhost:3000/api/reports/async
-
-Body:
-{
-  "action": "portalCliente::getAnalitic",
-  "periodos": [
-    {
-      "ini": "2024-03-01",
-      "fim": "2024-05-31"
-    }
-  ],
-  "cliente_cnpj": "12345678000190",
-  "usuario_email": "user@company.com",
-  "usuario_id": "123",
-  "filtros": {...},
-  "version": "4.59",
-  "token": "xxx",
-  "hmac": "yyy"
-}
-
-Response (202 Accepted):
-{
-  "status": true,
-  "requestId": "uuid-xxx",
-  "message": "Relatório enfileirado com sucesso",
-  "data": {
-    "id": "uuid-xxx",
-    "status": "PENDING",
-    "created_at": "2026-03-16T10:00:00Z"
-  }
-}
-```
-
-### 2. Verificar Status
-```bash
-GET http://localhost:3000/api/reports/{id}/status
-
-Response:
-{
-  "status": true,
-  "data": {
-    "id": "uuid-xxx",
-    "status": "PROCESSING" | "COMPLETED" | "FAILED",
-    "periodo_ini": "2024-03-01",
-    "periodo_fim": "2024-05-31",
-    "resultado": {
-      "pdf_url": "...",
-      "xml_url": "..."
-    },
-    "delivered_at": null,
-    "created_at": "2026-03-16T10:00:00Z",
-    "updated_at": "2026-03-16T10:05:00Z"
-  }
-}
-```
-
-### 3. Listar Pendentes
-```bash
-GET http://localhost:3000/api/reports/pending?limit=10
-
-Response:
-{
-  "status": true,
-  "count": 3,
-  "data": [...]
-}
-```
-
-## Fluxo de Execução
-
-1. **Web Frontend**
-   - Usuário seleciona período ≥ 30 dias
-   - Modal async aparece
-   - Frontend submete POST /api/reports/async
-
-2. **NestJS Recebe**
-   - Valida payload
-   - Cria registro em BD (status=PENDING)
-   - Dispara Airflow DAG via POST /api/v1/dags/{dagId}/dagRuns
-   - Retorna requestId (202 Accepted)
-
-3. **Airflow Processa**
-  - Task 1: extract_data → Consulta Oracle direto por Python usando schema do cliente
-   - Task 2: transform_data → Gera PDF/XML
-   - Task 3: send_email → Envia ao cliente
-   - Task 4 (callback): Atualiza NestJS com resultado/status
-
-## Mapeamento de cliente para schema
-
-- O campo `cliente` do payload é a chave de resolução de schema no Airflow.
-- O mapa versionado está em `airflow/config/client_schema_map.json`.
-- Exemplo: `potencial_hom` usa schema `VRT_POT`.
-
-4. **Web Faz Polling**
-   - GET /api/reports/{requestId}/status
-   - Mostra progresso: PENDING → PROCESSING → COMPLETED
-   - Quando COMPLETED, mostra link para PDF/XML
-
-## Configuração Airflow (UI)
-
-1. Acessar http://localhost:8080
-2. User: airflow / Pass: airflow
-3. DAG "report_generation_dag" deve estar listado
-4. Status por padrão é PAUSED (expected)
-
-## Configuração de Email (SMTP)
-
-O envio da task `send_email` usa variáveis do ambiente do Airflow:
-
-- `SMTP_HOST`
-- `SMTP_PORT`
+- `APP_ENV`
+- `ORACLE_HOST`
+- `ORACLE_PORT`
+- `ORACLE_USER`
+- `ORACLE_PASSWORD`
+- `ORACLE_SERVICE_NAME`
+- `ORACLE_DSN`
+- `NESTJS_API_URL`
+- `REPORTS_PUBLIC_URL`
 - `SMTP_USER`
 - `SMTP_PASSWORD`
 - `SMTP_FROM`
+- `WHATSAPP_API_URL`
+- `WHATSAPP_API_KEY`
 
-Exemplo local já parametrizado no `.env` com `smtp.velog.com.br:587`.
+## Subir Localmente
 
-## Logs
+Exemplo com homologação:
 
-- **NestJS**: `docker-compose logs -f nestjs-api`
-- **Airflow**: `docker-compose logs -f airflow-webserver`
-- **Airflow DB**: `docker-compose exec airflow-webserver cat /opt/airflow/logs/report_generation_dag/...`
+```bash
+cp .env.hml.example .env.hml
+docker compose --env-file .env.hml config
+docker compose --env-file .env.hml up -d --build
+```
 
-## Próximos Passos
+Exemplo com produção:
 
-1. **Python Transformations** → Implementar geração PDF/XML
-2. **Email Service** → Integrar com SendGrid/AWS SES
-3. **Bull MQ** → Adicionar se volume de requests crescer
-4. **Webhooks** → Notificação em tempo real (WebSocket)
-5. **Retry Strategy** → Refinar política por tipo de erro
+```bash
+cp .env.prod.example .env.prod
+docker compose --env-file .env.prod config
+docker compose --env-file .env.prod up -d --build
+```
+
+## Inicialização do Airflow
+
+Criar usuário inicial:
+
+```bash
+docker compose --env-file .env.hml exec -it airflow-webserver airflow users create \
+  --username airflow \
+  --firstname Airflow \
+  --lastname Admin \
+  --role Admin \
+  --email admin@vertti.com \
+  --password airflow
+```
+
+Migrar banco de metadados:
+
+```bash
+docker compose --env-file .env.hml exec airflow-webserver airflow db migrate
+```
+
+UI local do Airflow:
+
+- URL: `http://localhost:8081`
+- Usuário: `airflow`
+- Senha: `airflow`
+
+## Como o Cliente e o Schema São Resolvidos
+
+O cliente vem no payload do `dag_run.conf`.
+
+Fluxo resumido:
+
+1. A DAG lê `cliente` de `dag_run.conf` ou de `payload.cliente`
+2. `portal_cliente_extractor.py` chama `resolve_schema_by_cliente(cliente)`
+3. `oracle_connector.py` carrega `airflow/config/client_schema_map.json`
+4. O `dbUser` mapeado vira o schema Oracle usado nas queries
+5. Se não houver mapeamento, o fallback é `ORACLE_USER`
+
+Exemplo:
+
+- `cliente = rhall`
+- schema resolvido = `VTI_RHL`
+
+## Como o Banco Oracle É Resolvido
+
+A conexão Oracle usa as variáveis de ambiente do container Airflow.
+
+Prioridade:
+
+1. `ORACLE_DSN`, se definido
+2. `ORACLE_HOST` + `ORACLE_PORT` + `ORACLE_SERVICE_NAME`
+
+O usuário de conexão vem de `ORACLE_USER`, mas o schema efetivo das queries pode ser sobrescrito pelo mapeamento por cliente.
+
+## Dependência Externa Importante
+
+Mesmo sem um NestJS local neste stack, o Airflow ainda depende de uma API externa compatível para:
+
+- upload de arquivos
+- callback de status
+- links públicos de download
+
+Essa integração é feita via `NESTJS_API_URL`.
+
+## Logs Úteis
+
+```bash
+docker compose --env-file .env.hml logs -f airflow-webserver
+docker compose --env-file .env.hml logs -f airflow-postgres
+docker compose --env-file .env.hml exec airflow-webserver env | grep ORACLE_
+docker compose --env-file .env.hml exec airflow-webserver env | grep NESTJS_API_URL
+```
+
+## Arquivos de Referência
+
+- [SETUP.md](SETUP.md): operação do stack e variáveis de ambiente
+- [RELATORIO_MIGRATION_PLAN.md](RELATORIO_MIGRATION_PLAN.md): contexto da migração do backend
+
+## Observações
+
+- O `docker-compose.yml` deste repositório sobe apenas Airflow e o Postgres interno do Airflow
+- O repositório não deve mais ser tratado como fonte de verdade da API HTTP de negócio
+- Se o backend externo mudar de contrato, a DAG pode precisar de ajuste nos endpoints de upload e callback

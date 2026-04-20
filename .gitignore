@@ -7,6 +7,8 @@ build/
 
 # Environment
 .env
+.env.hml
+.env.prod
 .env.local
 .env.*.local
 
