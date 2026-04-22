@@ -84,9 +84,9 @@ jobs:
         run: |
           # O parâmetro -f aponta para o Dockerfile dentro da pasta airflow
           # O ponto final (.) mantém a raiz do repositório como contexto para os comandos COPY
-          docker build -t ${{ env.OCI_IMAGE_PATH }}:${{ needs.increment-version.outputs.new_tag }} -f airflow/Dockerfile .
-          docker build -t ${{ env.OCI_IMAGE_PATH }}:latest -f airflow/Dockerfile .
+          docker build -t ${{ env.OCI_IMAGE_PATH }}:apache_airflow-${{ needs.increment-version.outputs.new_tag }} -f airflow/Dockerfile .
+          docker build -t ${{ env.OCI_IMAGE_PATH }}:apache_airflow-latest -f airflow/Dockerfile .
           
-          docker push ${{ env.OCI_IMAGE_PATH }}:${{ needs.increment-version.outputs.new_tag }}
-          docker push ${{ env.OCI_IMAGE_PATH }}:latest
+          docker push ${{ env.OCI_IMAGE_PATH }}:apache_airflow-${{ needs.increment-version.outputs.new_tag }}
+          docker push ${{ env.OCI_IMAGE_PATH }}:apache_airflow-latest
 
