@@ -5,6 +5,8 @@ on:
     branches:
       - 'main' # Ou a branch que você definiu para produção/teste
   workflow_dispatch:
+permissions:
+  contents: write
 
 env:
   IMAGE_NAME: 'airflow-vertti'
