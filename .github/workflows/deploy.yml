@@ -28,15 +28,32 @@ jobs:
           git config --global user.name 'thiago-chaves-vertti'
           git config --global user.email 'thiago.chaves@vertti.com.br'
 
+
       - name: Calculate New Tag
         id: tag_version
         run: |
-          # Pega a última tag ou inicia v0.0.0
-          LATEST_TAG=$(git tag -l "v*" --sort=-version:refname | head -1 || echo "v0.0.0")
-          VERSION=${LATEST_TAG#v}
-          IFS='.' read -r -a V <<< "$VERSION"
-          V[2]=$((V[2] + 1))
-          NEW_TAG="v${V[0]}.${V[1]}.${V[2]}"
+          # Busca a última tag v* ou define v0.0.0 se não existir nenhuma
+          LATEST_TAG=$(git tag -l "v*" --sort=-version:refname | head -1)
+          
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_TAG="v0.0.1"
+          else
+            # Remove o 'v' inicial
+            VERSION=${LATEST_TAG#v}
+            # Separa os componentes da versão (Major.Minor.Patch)
+            IFS='.' read -r -a V <<< "$VERSION"
+            
+            # Garante que temos 3 partes, senão reinicia para 0.0.1
+            if [ ${#V[@]} -ne 3 ]; then
+              NEW_TAG="v0.0.1"
+            else
+              # Incrementa o Patch (último número)
+              V[2]=$((V[2] + 1))
+              NEW_TAG="v${V[0]}.${V[1]}.${V[2]}"
+            fi
+          fi
+          
+          echo "Nova tag calculada: $NEW_TAG"
           echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
           
       - name: Push Tag
