@@ -74,7 +74,7 @@ jobs:
       - name: Create Secrets Files
         run: |
           echo "${{ secrets.ENV_FILE }}" > .env
-
+          
       - name: Log in to OCIR
         run: |
           echo "${{ secrets.REGISTER_PASS }}" | docker login ${{ secrets.REGISTER_REGION }} \
@@ -82,9 +82,10 @@ jobs:
 
       - name: Build and Push Custom Airflow
         run: |
-          # Build usando a tag gerada e também a 'latest'
-          docker build -t ${{ env.OCI_IMAGE_PATH }}:${{ needs.increment-version.outputs.new_tag }} .
-          docker build -t ${{ env.OCI_IMAGE_PATH }}:latest .
+          # O parâmetro -f aponta para o Dockerfile dentro da pasta airflow
+          # O ponto final (.) mantém a raiz do repositório como contexto para os comandos COPY
+          docker build -t ${{ env.OCI_IMAGE_PATH }}:${{ needs.increment-version.outputs.new_tag }} -f airflow/Dockerfile .
+          docker build -t ${{ env.OCI_IMAGE_PATH }}:latest -f airflow/Dockerfile .
           
           docker push ${{ env.OCI_IMAGE_PATH }}:${{ needs.increment-version.outputs.new_tag }}
           docker push ${{ env.OCI_IMAGE_PATH }}:latest
