@@ -1,0 +1,72 @@
+name: CI/CD - Airflow - Version, Build, Push (OCIR) and Portainer Deploy
+
+on:
+  push:
+    branches:
+      - 'main' # Ou a branch que você definiu para produção/teste
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: 'airflow-vertti'
+  # Caminho completo no OCIR
+  OCI_IMAGE_PATH: ${{ secrets.REGISTER_REGION }}/${{ secrets.REGISTER_NAMESPACE }}/repositorio-dev
+jobs:
+  # --- JOB 1: VERSIONAMENTO ---
+  increment-version:
+    name: Increment Version
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'thiago-chaves-vertti'
+          git config --global user.email 'thiago.chaves@vertti.com.br'
+
+      - name: Calculate New Tag
+        id: tag_version
+        run: |
+          # Pega a última tag ou inicia v0.0.0
+          LATEST_TAG=$(git tag -l "v*" --sort=-version:refname | head -1 || echo "v0.0.0")
+          VERSION=${LATEST_TAG#v}
+          IFS='.' read -r -a V <<< "$VERSION"
+          V[2]=$((V[2] + 1))
+          NEW_TAG="v${V[0]}.${V[1]}.${V[2]}"
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          
+      - name: Push Tag
+        run: |
+          git tag ${{ steps.tag_version.outputs.new_tag }}
+          git push origin ${{ steps.tag_version.outputs.new_tag }}
+
+  # --- JOB 2: BUILD E PUSH (OCIR) ---
+  build-and-push:
+    name: Build Image and Push to OCIR
+    runs-on: ubuntu-latest
+    needs: increment-version
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Create Secrets Files
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > .env
+
+      - name: Log in to OCIR
+        run: |
+          echo "${{ secrets.REGISTER_PASS }}" | docker login ${{ secrets.REGISTER_REGION }} \
+          -u "${{ secrets.REGISTER_NAMESPACE }}/oracleidentitycloudservice/${{ secrets.REGISTER_USER }}" --password-stdin
+
+      - name: Build and Push Custom Airflow
+        run: |
+          # Build usando a tag gerada e também a 'latest'
+          docker build -t ${{ env.OCI_IMAGE_PATH }}:${{ needs.increment-version.outputs.new_tag }} .
+          docker build -t ${{ env.OCI_IMAGE_PATH }}:latest .
+          
+          docker push ${{ env.OCI_IMAGE_PATH }}:${{ needs.increment-version.outputs.new_tag }}
+          docker push ${{ env.OCI_IMAGE_PATH }}:latest
+
